@@ -8,7 +8,7 @@ import equinox as eqx
 import librosa
 import pandas as pd
 from einops import rearrange
-from jax import numpy as jnp, random, tree_map, lax
+from jax import numpy as jnp, random, tree_map, lax, devices, device_put
 from jaxtyping import Array, Float, Int, PRNGKeyArray
 from tqdm import tqdm
 
@@ -16,7 +16,7 @@ from tqdm import tqdm
 def pad_batch(wavs: list[Float[Array, "_ feature"]]) -> Float[Array, "batch time feature"]:
     """Pad a batch of wavs to the same length."""
     max_len = max(wav.shape[0] for wav in wavs)
-    return jnp.stack([lax.pad(wav, 0, ((0, max_len - wav.shape[0], 0), (0, 0, 0))) for wav in wavs])
+    return jnp.stack([lax.pad(wav, 0.0, ((0, max_len - wav.shape[0], 0), (0, 0, 0))) for wav in wavs])
 
 
 class AudioDataset(eqx.Module):
@@ -31,7 +31,7 @@ class AudioDataset(eqx.Module):
 class VCC18Dataset:
     """Dataset for the VCC18 dataset."""
 
-    def __init__(self, data_path: Path, score_csv_path: Path):
+    def __init__(self, data_path: Path, score_csv_path: Path, device: str = "cpu"):
         """Prepares the dataset by preprocessing it for training or validation.
 
         Args:
@@ -39,6 +39,8 @@ class VCC18Dataset:
             score_csv_path: Path to the score csv file.
 
         """
+
+        self.device = devices(device)[0]
         # Read score csv
         self.scores = pd.read_csv(
             score_csv_path,
@@ -59,11 +61,10 @@ class VCC18Dataset:
         # Get all systems
         self.systems = self.scores["WAV_PATH"].apply(lambda x: x.split("_")[0]).unique()
 
-    @staticmethod
-    def _generate_wav(wav_path: Path) -> Float[Array, "time feature"]:
+    def _generate_wav(self, wav_path: Path) -> Float[Array, "time feature"]:
         """Generate a spectrogram from a wav file."""
         wav, _ = librosa.load(wav_path, sr=16000)
-        wav = jnp.abs(librosa.stft(wav, n_fft=512)).T
+        wav = jnp.abs(device_put(librosa.stft(wav, n_fft=512), self.device)).T
         return wav
 
     def __getitem__(self, idx: Union[int, Int[Array, " batch"]]) -> AudioDataset:

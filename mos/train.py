@@ -84,6 +84,7 @@ def train(
 
     for key in epoch_keys:
         data = dataset.scan_all(batch_size, key=key)
+        print(data)
         it = (jnp.arange(len(data.wav)), data, split(key, len(data.wav)))
         (dynamic_model, opt_state, model_state), loss = lax.scan(scan_step, carry, it)
         print(loss)
