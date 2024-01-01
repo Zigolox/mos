@@ -64,7 +64,7 @@ class VCC18Dataset:
     def _generate_wav(self, wav_path: Path) -> Float[Array, "time feature"]:
         """Generate a spectrogram from a wav file."""
         wav, _ = librosa.load(wav_path, sr=16000)
-        wav = jnp.abs(device_put(librosa.stft(wav, n_fft=512), self.device)).T
+        wav = jnp.abs(librosa.stft(wav, n_fft=512)).T
         return wav
 
     def __getitem__(self, idx: Union[int, Int[Array, " batch"]]) -> AudioDataset:
@@ -107,11 +107,12 @@ class VCC18Dataset:
             # Get the samples of the batch
             yield self[indices]
 
-    def scan_all(self, batch_size, *, key: PRNGKeyArray) -> AudioDataset:
+    def scan_all(self, batch_size: int, scan_size: int, *, key: PRNGKeyArray) -> Iterator[AudioDataset]:
         """Get a random sample from the dataset.
 
         Args:
             batch_size: Size of the batch.
+            scan_size: Size of the scan iterations.
             key: Key to use for shuffling.
 
         Returns:
@@ -120,7 +121,9 @@ class VCC18Dataset:
             score: The score of the sample.
             judge_id: The judge id of the sample.
         """
-        data = self[random.permutation(key, len(self))]
-        n_scan = len(data.mean) // batch_size
-        end = n_scan * batch_size
-        return tree_map(lambda x: rearrange(x[:end], "(s b) ... -> s b ...", s=n_scan, b=batch_size), data)
+
+        perm = random.permutation(key, len(self))[: len(self) - len(self) % (scan_size * batch_size)]
+        for p in jnp.split(perm, scan_size):
+            data = self[p]
+            n_scan = len(data.mean) // batch_size
+            yield tree_map(lambda x: rearrange(x, "(s b) ... -> s b ...", s=n_scan, b=batch_size), data)

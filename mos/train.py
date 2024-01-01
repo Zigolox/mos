@@ -5,11 +5,11 @@ import jax.numpy as jnp
 from dataset import AudioDataset, VCC18Dataset
 from jax import lax
 from jax.random import split
-from jax_tqdm import scan_tqdm
 from jaxtyping import Array, Float, PRNGKeyArray
 from loss import batch_loss
 from models import DeepMos
 from optax import GradientTransformation, OptState
+from tqdm import tqdm
 
 
 def step(
@@ -48,6 +48,7 @@ def train(
     opt_state: OptState,
     epochs: int,
     batch_size: int,
+    scan_size: int,
     model_state: eqx.nn.State,
     dataset: VCC18Dataset,
     key: PRNGKeyArray,
@@ -61,6 +62,7 @@ def train(
         state: State of the model.
         epochs: Number of epochs to train.
         batch_size: Size of the batch.
+        scan_size: Size of the scan.
         model_state: State of the batch norm.
         dataset: Class dataset from dataset module
         key: Random key
@@ -70,25 +72,23 @@ def train(
     """
     dynamic_model, static_model = eqx.partition(model, eqx.is_array)
 
-    @scan_tqdm(len(dataset) // batch_size)
     def scan_step(carry, it):
-        (dynamic_model, opt_state, model_state), (_, data, key) = carry, it
+        (dynamic_model, opt_state, model_state), (data, key) = carry, it
         model, opt_state, model_state, loss = step(
             eqx.combine(dynamic_model, static_model), data, opt_state, optim, model_state, key
         )
         return (eqx.filter(model, eqx.is_array), opt_state, model_state), loss
 
     losses = []
-    carry = (dynamic_model, opt_state, model_state)
-    epoch_keys = split(key, epochs)
 
-    for key in epoch_keys:
-        data = dataset.scan_all(batch_size, key=key)
-        print(data)
-        it = (jnp.arange(len(data.wav)), data, split(key, len(data.wav)))
-        (dynamic_model, opt_state, model_state), loss = lax.scan(scan_step, carry, it)
-        print(loss)
-        losses.append(loss)
+    for epoch_key in split(key, epochs):
+        for data, key in zip(
+            dataset.scan_all(batch_size, scan_size, key=epoch_key), tqdm(split(epoch_key, scan_size))
+        ):
+            carry, it = (dynamic_model, opt_state, model_state), (data, split(key, len(data.wav)))
+            (dynamic_model, opt_state, model_state), loss = lax.scan(scan_step, carry, it)
+            print(loss)
+            losses.append(loss)
 
     model = eqx.combine(dynamic_model, static_model)
 
@@ -104,7 +104,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Train a model.")
     parser.add_argument("--epochs", type=int, default=1, help="Number of epochs to train the model for.")
-    parser.add_argument("--batch-size", type=int, default=2, help="Size of the batch to use for training.")
+    parser.add_argument("--batch-size", type=int, default=1, help="Size of the batch to use for training.")
+    parser.add_argument("--scan-size", type=int, default=5, help="Size of the scan to use for training.")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate to use for training.")
     parser.add_argument(
         "--data-dir",
@@ -138,6 +139,7 @@ if __name__ == "__main__":
         opt_state,
         args.epochs,
         args.batch_size,
+        args.scan_size,
         model_state,
         dataset,
         key,
