@@ -8,7 +8,7 @@ import equinox as eqx
 import librosa
 import pandas as pd
 from einops import rearrange
-from jax import numpy as jnp, random, tree_map
+from jax import numpy as jnp, random, tree_map, lax
 from jaxtyping import Array, Float, Int, PRNGKeyArray
 from tqdm import tqdm
 
@@ -16,7 +16,7 @@ from tqdm import tqdm
 def pad_batch(wavs: list[Float[Array, "_ feature"]]) -> Float[Array, "batch time feature"]:
     """Pad a batch of wavs to the same length."""
     max_len = max(wav.shape[0] for wav in wavs)
-    return jnp.stack([jnp.pad(wav, ((0, max_len - wav.shape[0]), (0, 0)), mode="wrap") for wav in wavs])
+    return jnp.stack([lax.pad(wav, 0, ((0, max_len - wav.shape[0], 0), (0, 0, 0))) for wav in wavs])
 
 
 class AudioDataset(eqx.Module):
