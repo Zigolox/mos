@@ -232,6 +232,7 @@ class MultiEncoderMos(eqx.Module):
     The first encoder takes in the reference signal and the second encoder takes in the degraded signal.
     """
 
+    conv: DeePMOSConvBlock
     encoder_ref: ConvEncoder
     encoder_deg: ConvEncoder
     lstm: BiLSTM
@@ -240,6 +241,7 @@ class MultiEncoderMos(eqx.Module):
     def __init__(self, *, key: PRNGKeyArray):
         """Initializes the MultiEncoderMos network consisting of two encoder and one decoders."""
         keys = split(key, 4)
+        self.conv = DeePMOSConvBlock(in_channels=1, out_channels=16, key=keys[0])
         self.encoder_ref = ConvEncoder(key=keys[0])
         self.encoder_deg = ConvEncoder(key=keys[1])
         self.lstm = BiLSTM(input_size=1024, hidden_size=128, key=keys[2])
@@ -267,7 +269,7 @@ class MultiEncoderMos(eqx.Module):
         encoder_ref_key, encoder_deg_key, lstm_key, mean_key = split(key, 4)
 
         # Run the encoder
-        hidden_ref, model_state = self.encoder_ref(inputs_ref, state=model_state, key=encoder_ref_key)
+        # hidden_ref, model_state = self.encoder_ref(inputs_ref, state=model_state, key=encoder_ref_key)
         # hidden_deg, model_state = self.encoder_deg(inputs_deg, state=model_state, key=encoder_deg_key)
 
         # Run the decoders
@@ -277,6 +279,8 @@ class MultiEncoderMos(eqx.Module):
         # mean = eqx.filter_vmap(lambda x, key: self.mean_decoder(x, key=key))(
         #    hidden, split(mean_key, len(inputs_ref))
         # )
+        inputs_ref = rearrange(inputs_ref, "time feature -> 1 time feature")
+        hidden_ref = self.conv(inputs_ref)
         mean = jnp.repeat(hidden_ref.mean(), inputs_ref.shape[0])
         print(mean.shape)
         return mean, model_state
