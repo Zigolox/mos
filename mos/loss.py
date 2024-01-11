@@ -64,7 +64,7 @@ def multi_head_batch_loss(
     data: AudioDatasetRef,
     model_state: eqx.nn.State,
     key: PRNGKeyArray,
-) -> tuple[Float[Array, "batch time"], eqx.nn.State]:
+) -> tuple[Float[Array, ""], eqx.nn.State]:
     """Compute the loss of a batch.
 
     Args:
@@ -82,7 +82,8 @@ def multi_head_batch_loss(
         model_state,
         split(key, len(data.mos)),
     )
-    frame_loss = jnp.square(mean - data.mos).mean()
+    score = repeat(data.mos, "batch -> batch time", time=data.deg.shape[1])
+    frame_loss = jnp.square(mean - score).mean()
     mean_loss = jnp.square(mean.mean(axis=1) - data.mos).mean()
 
     total_loss = frame_loss + mean_loss

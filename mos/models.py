@@ -1,6 +1,6 @@
 """All models used in the project."""
 import equinox as eqx
-from einops import rearrange
+from einops import rearrange, repeat
 from jax import lax, numpy as jnp
 from jax.nn import elu, relu
 from jax.random import split
@@ -78,7 +78,6 @@ class BiLSTM(eqx.Module):
 
         # Combine two axes
         combined = jnp.concatenate([forward_states, backward_states], axis=1)
-        # combined = rearrange([forward_states, backward_states], "l time hidden -> (l time) hidden")
         return combined
 
 
@@ -214,6 +213,7 @@ class DeepMos(eqx.Module):
             Mean and variance of shape (time, 1).
         """
         encoder_key, mean_key, variance_key = split(key, 3)
+
         # Run the encoder
         hidden, model_state = self.encoder(inputs, state=model_state, key=encoder_key)
 
@@ -265,15 +265,18 @@ class MultiEncoderMos(eqx.Module):
             The batch state of the model.
         """
         encoder_ref_key, encoder_deg_key, lstm_key, mean_key = split(key, 4)
+
         # Run the encoder
         hidden_ref, model_state = self.encoder_ref(inputs_ref, state=model_state, key=encoder_ref_key)
-        hidden_deg, model_state = self.encoder_deg(inputs_deg, state=model_state, key=encoder_deg_key)
+        # hidden_deg, model_state = self.encoder_deg(inputs_deg, state=model_state, key=encoder_deg_key)
 
         # Run the decoders
-        hidden = rearrange([hidden_ref, hidden_deg], "two channel time feature -> time (two channel feature)")
-        hidden = self.lstm(hidden, key=lstm_key)
+        # hidden = rearrange([hidden_ref, hidden_deg], "two channel time feature -> time (two channel feature)")
+        # hidden = self.lstm(hidden, key=lstm_key)
 
-        mean = eqx.filter_vmap(lambda x, key: self.mean_decoder(x, key=key))(
-            hidden, split(mean_key, len(inputs_ref))
-        )
+        # mean = eqx.filter_vmap(lambda x, key: self.mean_decoder(x, key=key))(
+        #    hidden, split(mean_key, len(inputs_ref))
+        # )
+        mean = jnp.repeat(hidden_ref.mean(), inputs_ref.shape[0])
+        print(mean.shape)
         return mean, model_state
