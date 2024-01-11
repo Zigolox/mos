@@ -105,12 +105,12 @@ class DeePMOSConvBlock(eqx.nn.Sequential):
         )
 
 
-class DeePMOSEncoder(eqx.nn.Sequential):
-    """Enconder part of the DeePMOS architecture."""
+class ConvEncoder(eqx.nn.Sequential):
+    """Convolutional encoder."""
 
     def __init__(self, *, key: PRNGKeyArray):
-        """Initialzize the encoder part."""
-        keys = split(key, 5)
+        """Initialize the convolutional encoder."""
+        keys = split(key, 4)
         super().__init__(
             [
                 eqx.nn.Lambda(lambda x: rearrange(x, "time feature -> 1 time feature")),
@@ -122,8 +122,33 @@ class DeePMOSEncoder(eqx.nn.Sequential):
                 DropNormActUnit(input_size=64),
                 DeePMOSConvBlock(in_channels=64, out_channels=128, key=keys[3]),
                 DropNormActUnit(input_size=128),
+            ]
+        )
+
+
+class DeePMOSLSTMBlock(eqx.nn.Sequential):
+    """LSTM block of the DeePMOS architecture."""
+
+    def __init__(self, input_size: int, hidden_size: int, *, key: PRNGKeyArray):
+        """Initialize the LSTM block."""
+        super().__init__(
+            [
                 eqx.nn.Lambda(lambda x: rearrange(x, "c time w -> time (c w)")),
-                BiLSTM(input_size=512, hidden_size=128, key=keys[4]),
+                BiLSTM(input_size=input_size, hidden_size=hidden_size, key=key),
+            ]
+        )
+
+
+class DeePMOSEncoder(eqx.nn.Sequential):
+    """Enconder part of the DeePMOS architecture."""
+
+    def __init__(self, *, key: PRNGKeyArray):
+        """Initialzize the encoder part."""
+        conv_key, lstm_key = split(key, 2)
+        super().__init__(
+            [
+                ConvEncoder(key=conv_key),
+                DeePMOSLSTMBlock(input_size=512, hidden_size=128, key=lstm_key),
             ]
         )
 
@@ -198,3 +223,57 @@ class DeepMos(eqx.Module):
             hidden, split(variance_key, len(inputs))
         )
         return (mean, variance), model_state
+
+
+class MultiEncoderMos(eqx.Module):
+    """MultiEncoderMos architecture.
+
+    This architecture consists of two encoders and one decoder.
+    The first encoder takes in the reference signal and the second encoder takes in the degraded signal.
+    """
+
+    encoder_ref: ConvEncoder
+    encoder_deg: ConvEncoder
+    lstm: BiLSTM
+    mean_decoder: DeePMOSMeanDecoder
+
+    def __init__(self, *, key: PRNGKeyArray):
+        """Initializes the MultiEncoderMos network consisting of two encoder and one decoders."""
+        keys = split(key, 4)
+        self.encoder_ref = ConvEncoder(key=keys[0])
+        self.encoder_deg = ConvEncoder(key=keys[1])
+        self.lstm = BiLSTM(input_size=1024, hidden_size=128, key=keys[2])
+        self.mean_decoder = DeePMOSMeanDecoder(key=keys[3])
+
+    def __call__(
+        self,
+        inputs_ref: Float[Array, "time feature"],
+        inputs_deg: Float[Array, "time feature"],
+        model_state: eqx.nn.State,
+        key: PRNGKeyArray,
+    ) -> tuple[Float[Array, "time 1"], eqx.nn.State]:
+        """Forward pass of the MultiEncoderMos architecture.
+
+        Args:
+            inputs_ref: Input sequence of shape (time, feature_size).
+            inputs_deg: Input sequence of shape (time, feature_size).
+            model_state: The batch state of the model.
+            key: Random key.
+
+        Returns:
+            Mean of shape (time, 1).
+            The batch state of the model.
+        """
+        encoder_ref_key, encoder_deg_key, lstm_key, mean_key = split(key, 4)
+        # Run the encoder
+        hidden_ref, model_state = self.encoder_ref(inputs_ref, state=model_state, key=encoder_ref_key)
+        hidden_deg, model_state = self.encoder_deg(inputs_deg, state=model_state, key=encoder_deg_key)
+
+        # Run the decoders
+        hidden = rearrange([hidden_ref, hidden_deg], "two channel time feature -> time (two channel feature)")
+        hidden = self.lstm(hidden, key=lstm_key)
+
+        mean = eqx.filter_vmap(lambda x, key: self.mean_decoder(x, key=key))(
+            hidden, split(mean_key, len(inputs_ref))
+        )
+        return mean, model_state

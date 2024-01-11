@@ -15,8 +15,8 @@ def test_epoch_VCC18Dataset(getkey):
     filepath = data_path / "small_vcc2018_testing_data.csv"
     dataset = VCC18Dataset(data_path, filepath)
     batch = next(dataset.epoch(10, key=getkey()))
-    assert len(batch.wav) == 10
-    assert len(batch.mean) == 10
+    assert len(batch.deg) == 10
+    assert len(batch.mos) == 10
     assert len(batch.score) == 10
     assert len(batch.judge_id) == 10
 
