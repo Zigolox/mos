@@ -168,7 +168,6 @@ class NISQADataset:
             data_path: Path to the data folder.
             score_csv_path: Path to the score csv file.
         """
-
         # Read score csv
         frame = pd.read_csv(
             score_csv_path,
@@ -249,7 +248,11 @@ class NISQADataset:
             score: The score of the sample.
             judge_id: The judge id of the sample.
         """
-        indices = random.randint(key, (batch_size,), 0, len(self))
+        # Throw error if batch size is larger than dataset
+        if batch_size > len(self):
+            raise ValueError("Batch size is larger than dataset size")
+
+        indices = random.permutation(key, len(self))[:batch_size]
         return self[indices]
 
     def scan_all(self, batch_size: int, n_scans: int, *, key: PRNGKeyArray) -> Iterator[AudioDataset]:

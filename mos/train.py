@@ -62,7 +62,7 @@ def train(
     validation_size: int,
     loss_fn: Callable,
     key: PRNGKeyArray,
-) -> tuple[DeepMos, eqx.nn.State, list[Float[Array, " data_size//batch_size"]]]:
+) -> tuple[DeepMos, eqx.nn.State]:
     """Train a model.
 
     Args:
@@ -94,6 +94,15 @@ def train(
         return (eqx.filter(model, eqx.is_array), opt_state, model_state), loss
 
     for epoch, epoch_key in enumerate(split(key, epochs)):
+
+        log.log(
+            model,
+            validation_dataset.get_batch(validation_size, key=epoch_key),
+            model_state,
+            key,
+            loss_fn,
+            "val",
+        )
         for data, key in zip(
             train_dataset.scan_all(batch_size, scan_size, key=epoch_key), tqdm(split(epoch_key, scan_size))
         ):
@@ -102,16 +111,8 @@ def train(
             log.log_multiple(loss, "train", "loss")
 
         model = eqx.combine(dynamic_model, static_model)
-        # log.log(
-        #    model,
-        #    validation_dataset.get_batch(validation_size, key=epoch_key),
-        #    model_state,
-        #    key,
-        #    loss_fn,
-        #    "val",
-        # )
         log.save_model(model, model_state, epoch)
-    return model, model_state, losses
+    return model, model_state
 
 
 if __name__ == "__main__":
@@ -123,7 +124,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Train a model.")
     parser.add_argument("--epochs", type=int, default=1, help="Number of epochs to train the model for.")
-    parser.add_argument("--batch-size", type=int, default=1, help="Size of the batch to use for training.")
+    parser.add_argument("--batch-size", type=int, default=32, help="Size of the batch to use for training.")
     parser.add_argument("--scan-size", type=int, default=2, help="Size of the scan to use for training.")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate to use for training.")
     parser.add_argument("--dataset-type", type=str, default="vcc2018", help="Dataset to use for training.")
@@ -136,7 +137,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0, help="Seed to use for the random number generator.")
     parser.add_argument("--train_dataset", type=str, default="small_vcc2018_training_data.csv")
     parser.add_argument("--validation_dataset", type=str, default="small_vcc2018_val_data.csv")
-    parser.add_argument("--validation_size", type=int, default=100)
+    parser.add_argument("--validation_size", type=int, default=50)
 
     args = parser.parse_args()
 
@@ -169,7 +170,7 @@ if __name__ == "__main__":
     opt_state = optim.init(eqx.filter(model, eqx.is_array))
 
     # Train the model
-    model, model_state, losses = train(
+    model, model_state = train(
         model,
         optim,
         opt_state,

@@ -31,7 +31,7 @@ def log_multiple(array: Array, tag: str, name: str) -> None:
 
 def save_model(model, model_state, epoch):
     """Saves the model to wandb"""
-    model_file_name = f"{model.__class__.__name__}_gstep{epoch}.eqx"
+    model_file_name = f"models/{model.__class__.__name__}_gstep{epoch}.eqx"
     model = eqx.nn.inference_mode(model)
     model = eqx.Partial(model, state=model_state)
 
