@@ -279,8 +279,9 @@ class MultiEncoderMos(eqx.Module):
         # mean = eqx.filter_vmap(lambda x, key: self.mean_decoder(x, key=key))(
         #    hidden, split(mean_key, len(inputs_ref))
         # )
-        inputs_ref = rearrange(inputs_ref, "time feature -> 1 time feature")
-        hidden_ref = self.conv(inputs_ref)
+        # inputs_ref = rearrange(inputs_ref, "time feature -> 1 time feature")
+        # hidden_ref = self.conv(inputs_ref)
+        hidden_ref = self.mean_decoder(repeat(inputs_ref[0][0], " -> time", time=256), key=mean_key)
         mean = jnp.repeat(hidden_ref.mean(), inputs_ref.shape[0])
         print(mean.shape)
         return mean, model_state
