@@ -78,6 +78,8 @@ def multi_head_batch_loss(
     mean, model_state = eqx.filter_vmap(model, in_axes=(0, 0, None, 0), out_axes=(0, None), axis_name="batch")(
         data.ref, data.deg, model_state, split(key, len(data.mos))
     )
-    nll = jnp.square(mean - data.mos).mean()
+    frame_loss = jnp.square(mean - data.mos).mean()
+    mean_loss = jnp.square(mean.mean(axis=1) - data.mos).mean()
 
-    return nll, model_state
+    total_loss = frame_loss + mean_loss
+    return total_loss, model_state
