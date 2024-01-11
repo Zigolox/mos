@@ -31,8 +31,8 @@ class AudioDataset(eqx.Module):
 class AudioDatasetRef(eqx.Module):
     """Dataset for audio files."""
 
-    ref: Float[Array, " batch time feature"] = eqx.field(converter=jnp.asarray)
-    deg: Float[Array, " batch time feature"] = eqx.field(converter=jnp.asarray)
+    ref: Float[Array, " batch time feature"] = eqx.field(converter=_pad_batch)
+    deg: Float[Array, " batch time feature"] = eqx.field(converter=_pad_batch)
     mos: Float[Array, " batch"] = eqx.field(converter=jnp.asarray)
     mos_std: Float[Array, " batch"] = eqx.field(converter=jnp.asarray)
 
@@ -161,7 +161,7 @@ class VCC18Dataset:
 class NISQADataset:
     """Loader and server of the NISQA dataset"""
 
-    def __init__(self, data_path: Path, score_csv_path: Path, data_type="NISQA_TRAIN_SIM"):
+    def __init__(self, data_path: Path, score_csv_path: Path, data_type="NISQA_TRAIN_SIM", only_deg=False):
         """Prepares the dataset by preprocessing it for training or validation.
 
         Args:
@@ -177,18 +177,17 @@ class NISQADataset:
         self.scores = frame[frame["db"] == data_type].reset_index(drop=True)
 
         # Turn all wav files into spectrograms and store them in a dictionary
-        self.deg = _pad_batch(
-            [
-                self._generate_wav(data_path / deg_file)
-                for deg_file in tqdm(self.scores["filepath_deg"], desc="Generating spectrograms")
-            ]
-        )
-        self.ref = _pad_batch(
-            [
+        self.deg = [
+            self._generate_wav(data_path / deg_file)
+            for deg_file in tqdm(self.scores["filepath_deg"], desc="Generating spectrograms")
+        ]
+        if not only_deg:
+            self.ref = [
                 self._generate_wav(data_path / ref_file)
                 for ref_file in tqdm(self.scores["filepath_ref"], desc="Generating spectrograms")
             ]
-        )
+        else:
+            self.ref = self.deg
 
     def _generate_wav(self, wav_path: Path) -> Float[Array, "time feature"]:
         """Generate a spectrogram from a wav file."""
@@ -209,7 +208,11 @@ class NISQADataset:
             judge_id: The judge id of the sample.
         """
         rows = self.scores.iloc[idx]
-        deg, ref = self.deg[idx], self.ref[idx]
+        if isinstance(idx, int):
+            deg, ref = [self.deg[idx]], [self.ref[idx]]
+        else:
+            deg, ref = [self.deg[i] for i in idx], [self.ref[i] for i in idx]
+
         return AudioDatasetRef(ref, deg, rows["mos"], rows["mos_std"])
 
     def __len__(self) -> int:
