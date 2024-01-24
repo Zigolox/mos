@@ -40,13 +40,10 @@ def evaluate(
     mean, _ = eqx.filter_vmap(model, in_axes=(0, 0, None, 0), out_axes=(0, None), axis_name="batch")(
         data.ref, data.deg, model_state, split(key, len(data.deg))
     )
-    print(mean, mean.shape)
     pred = jnp.ravel(mean.mean(axis=1))
-    print(pred.shape, pred, data.mos.shape, data.mos)
     # Spearmann correlation
     spearmann = spearmanr(data.mos, pred)[0]
     # Pearson correlation
     pearson = jnp.corrcoef(data.mos, pred)[0, 1]
     eqx.nn.inference_mode(model, False)
-    print(loss, spearmann, pearson)
-    return loss, spearmann, pearson
+    return loss, spearmann, float(pearson)

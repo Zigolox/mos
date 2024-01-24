@@ -6,6 +6,7 @@ from jax.random import split
 from jaxtyping import Array, Float, PRNGKeyArray
 from models import DeepMos, MultiEncoderMos
 from tensorflow_probability.substrates import jax as tfp
+from einops import repeat
 
 
 def batch_loss(
@@ -78,8 +79,9 @@ def multi_head_batch_loss(
     mean, model_state = eqx.filter_vmap(model, in_axes=(0, 0, None, 0), out_axes=(0, None), axis_name="batch")(
         data.ref, data.deg, model_state, split(key, len(data.mos))
     )
-    frame_loss = jnp.square(mean - data.mos).mean()
-    mean_loss = jnp.square(mean.mean(axis=1) - data.mos).mean()
+    mos = repeat(data.mos, "batch -> batch time 1", time=mean.shape[1])
+    frame_loss = jnp.square(mean - mos).mean()
+    mean_loss = jnp.square(mean.mean(axis=1) - mos.mean(axis=1)).mean()
 
     total_loss = frame_loss + mean_loss
     return total_loss, model_state

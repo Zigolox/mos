@@ -8,7 +8,7 @@ from models import DeepMos
 import equinox as eqx
 
 
-def log(
+def log_eval(
     model: DeepMos,
     data: AudioDataset,
     model_state: eqx.nn.State,
@@ -16,7 +16,6 @@ def log(
     loss_fn: Callable,
     tag: str,
 ) -> None:
-
     # Compute the loss in regards to the model parameters.
     loss, spearmann, pearson = evaluate(model, model_state, data, loss_fn, key)
 

@@ -94,8 +94,7 @@ def train(
         return (eqx.filter(model, eqx.is_array), opt_state, model_state), loss
 
     for epoch, epoch_key in enumerate(split(key, epochs)):
-
-        log.log(
+        log.log_eval(
             model,
             validation_dataset.get_batch(validation_size, key=epoch_key),
             model_state,
