@@ -161,7 +161,16 @@ class VCC18Dataset:
 class NISQADataset:
     """Loader and server of the NISQA dataset"""
 
-    def __init__(self, data_path: Path, score_csv_path: Path, data_type="NISQA_TRAIN_SIM", only_deg=False):
+    def __init__(
+        self,
+        data_path: Path,
+        score_csv_path: Path,
+        data_type="NISQA_TRAIN_SIM",
+        only_deg=False,
+        with_enhanced=False,
+        size: int = -1,
+        some_fake_points=False,
+    ):
         """Prepares the dataset by preprocessing it for training or validation.
 
         Args:
@@ -175,6 +184,9 @@ class NISQADataset:
         )
         self.scores = frame[frame["db"] == data_type].reset_index(drop=True)
 
+        if size > 0:
+            self.scores = self.scores[:size]
+
         # Turn all wav files into spectrograms and store them in a dictionary
         self.deg = [
             self._generate_wav(data_path / deg_file)
@@ -187,6 +199,12 @@ class NISQADataset:
             ]
         else:
             self.ref = self.deg
+
+        if with_enhanced:
+            self.enh = [
+                self._generate_wav(data_path / enh_file.replace("ref", "enh"))
+                for enh_file in tqdm(self.scores["filepath_ref"], desc="Generating spectrograms")
+            ]
 
     def _generate_wav(self, wav_path: Path) -> Float[Array, "time feature"]:
         """Generate a spectrogram from a wav file."""
