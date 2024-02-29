@@ -11,7 +11,7 @@ from jaxtyping import PRNGKeyArray
 from optax import GradientTransformation, OptState
 
 import mos.log as log
-from mos.dataset import AudioDataset
+from mos.datasetv2 import AudioDataset
 from mos.models import Model
 from mos.utils import infinite_rng_split
 
@@ -88,6 +88,7 @@ def train(
         return (eqx.filter(model, eqx.is_array), opt_state, model_state), loss
 
     for pack_step, (data, step_key) in enumerate(zip(train_dataloader, infinite_rng_split(key))):
+        data = AudioDataset(*data)
         carry, it = (dynamic_model, opt_state, model_state), (data, split(step_key, len(data.mos)))
         (dynamic_model, opt_state, model_state), loss = lax.scan(scan_step, carry, it)
 

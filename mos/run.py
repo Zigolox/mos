@@ -11,7 +11,7 @@ import jax
 from optax import adamw
 
 import wandb
-from mos.datasetv2 import AudioDatasetTransform, NISQADataset, PadTransform
+from mos.datasetv2 import NISQADataset, PadTransform
 from mos.loss import multi_head_batch_loss
 from mos.models import MultiEncoderMos
 from mos.train import train
@@ -73,7 +73,6 @@ if __name__ == "__main__":
             PadTransform(1000),
             grain.Batch(args.batch_size, drop_remainder=args.drop_remainder),
             grain.Batch(args.scan_size, drop_remainder=args.drop_remainder),
-            AudioDatasetTransform(),
         ),
         shuffle=True,
         seed=args.seed,

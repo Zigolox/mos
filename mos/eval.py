@@ -8,6 +8,7 @@ from jax import lax, numpy as jnp
 from jaxtyping import PRNGKeyArray
 from scipy.stats import spearmanr
 
+from mos.datasetv2 import AudioDataset
 from mos.models import Model
 
 
@@ -38,6 +39,7 @@ def evaluate(
     # Compute the loss in regards to the model parameters.
     total_loss, total_pred, mos = [], [], []
     for data in data_loader:
+        data = AudioDataset(*data)
         loss, (_, pred) = lax.map(lambda data: loss_fn(model, data, model_state, key), data)
         total_loss += list(loss.ravel())
         total_pred += list(pred.mean(axis=2).ravel())
