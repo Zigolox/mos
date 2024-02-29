@@ -89,7 +89,6 @@ def train(
 
     for pack_step, (data, step_key) in enumerate(zip(train_dataloader, infinite_rng_split(key))):
         data = AudioDataset(*data)
-        print(data)
         carry, it = (dynamic_model, opt_state, model_state), (data, split(step_key, len(data.mos)))
         (dynamic_model, opt_state, model_state), loss = lax.scan(scan_step, carry, it)
 
