@@ -50,7 +50,6 @@ class NISQADataset(grain.RandomAccessDataSource):
     def _generate_wav(self, wav_path: Path) -> np.ndarray:
         """Generate a spectrogram from a wav file."""
         wav, _ = librosa.load(wav_path, sr=16000)
-        print(max(wav), min(wav))
         wav += self.rng.normal(0, self.noise_amplitude, wav.shape)
         return np.abs(librosa.stft(wav, n_fft=512)).T
 
