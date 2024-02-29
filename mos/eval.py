@@ -1,20 +1,21 @@
 """Evaluation functions for DeepMOS."""
-import equinox as eqx
-from dataset import AudioDataset, AudioDatasetRef
-from jax import numpy as jnp
-from jax.random import split
-from jaxtyping import Array, Float, PRNGKeyArray
-from models import DeepMos
+
 from typing import Callable
+
+import equinox as eqx
+import grain.python as grain
+from jax import lax, numpy as jnp
+from jaxtyping import PRNGKeyArray
 from scipy.stats import spearmanr
-from typing import Union
+
+from mos.models import Model
 
 
 def evaluate(
-    model: DeepMos,
+    model: Model,
     model_state: eqx.nn.State,
-    data: Union[AudioDataset, AudioDatasetRef],
-    loss_fn: Callable[[DeepMos, AudioDataset, eqx.nn.State, PRNGKeyArray], Float[Array, "data_size"]],
+    data_loader: grain.DataLoader,
+    loss_fn: Callable,
     key: PRNGKeyArray,
 ) -> tuple[float, float, float]:
     """Evaluate a model.
@@ -22,9 +23,8 @@ def evaluate(
     Args:
         model: Model to evaluate.
         model_state: State of the model.
-        data: Data to use.
-        key: Key to use for randomness.
-        loss_fn; Loss function to use.
+        data_loader: Validation dataloader
+        loss_fn: Loss function to use.
         key: Key to use for randomness.
 
     Returns:
@@ -33,17 +33,22 @@ def evaluate(
         Pearson correlation of the model.
     """
     # Put the model in inference mode.
-    eqx.nn.inference_mode(model)
+    eqx.nn.inference_mode(model, True)
+
     # Compute the loss in regards to the model parameters.
-    loss, _ = loss_fn(model, data, model_state, key)
-    # Compute the model predictions.
-    mean, _ = eqx.filter_vmap(model, in_axes=(0, 0, None, 0), out_axes=(0, None), axis_name="batch")(
-        data.ref, data.deg, model_state, split(key, len(data.deg))
-    )
-    pred = jnp.ravel(mean.mean(axis=1))
+    total_loss, total_pred, mos = [], [], []
+    for data in data_loader:
+        loss, (_, pred) = lax.map(lambda data: loss_fn(model, data, model_state, key), data)
+        total_loss += list(loss.ravel())
+        total_pred += list(pred.mean(axis=2).ravel())
+        mos += list(data.mos.ravel())
+
+    # Compute the mean loss.
+    loss = jnp.array(total_loss).mean()
     # Spearmann correlation
-    spearmann = spearmanr(data.mos, pred)[0]
+    spearmann = spearmanr(mos, total_pred)[0]
     # Pearson correlation
-    pearson = jnp.corrcoef(data.mos, pred)[0, 1]
+    pearson = jnp.corrcoef(jnp.array(mos), jnp.array(total_pred))[0, 1]
+    # Put the model back in training mode.
     eqx.nn.inference_mode(model, False)
-    return loss, spearmann, float(pearson)
+    return float(loss), float(spearmann), float(pearson)

@@ -7,8 +7,7 @@ from typing import Union
 import equinox as eqx
 import librosa
 import pandas as pd
-from einops import rearrange
-from jax import devices, lax, numpy as jnp, random, tree_map
+from jax import devices, lax, numpy as jnp, random
 from jaxtyping import Array, Float, Int, PRNGKeyArray
 from tqdm import tqdm
 
@@ -93,7 +92,7 @@ class VCC18Dataset:
             score: The score of the sample.
             judge_id: The judge id of the sample.
         """
-        rows = self.scores.iloc[idx]
+        rows = self.scores.iloc[idx]  # type: ignore
         if isinstance(idx, int):
             wav = [self.wavs[rows["WAV_PATH"]]]
         else:
@@ -137,29 +136,9 @@ class VCC18Dataset:
         indices = random.randint(key, (batch_size,), 0, len(self))
         return self[indices]
 
-    def scan_all(self, batch_size: int, n_scans: int, *, key: PRNGKeyArray) -> Iterator[AudioDataset]:
-        """Get a random sample from the dataset.
-
-        Args:
-            batch_size: Size of the batch.
-            n_scans: Number of scans to do.
-            key: Key to use for shuffling.
-
-        Returns:
-            wav: The wave file as a numpy array.
-            mean: The mean score of the sample.
-            score: The score of the sample.
-            judge_id: The judge id of the sample.
-        """
-        perm = random.permutation(key, len(self))[: len(self) - len(self) % (n_scans * batch_size)]
-        for p in jnp.split(perm, n_scans):
-            data = self[p]
-            scan_loops = len(data.mos) // batch_size
-            yield tree_map(lambda x: rearrange(x, "(s b) ... -> s b ...", s=scan_loops, b=batch_size), data)
-
 
 class NISQADataset:
-    """Loader and server of the NISQA dataset"""
+    """Loader and server of the NISQA dataset."""
 
     def __init__(
         self,
@@ -169,13 +148,17 @@ class NISQADataset:
         only_deg=False,
         with_enhanced=False,
         size: int = -1,
-        some_fake_points=False,
     ):
         """Prepares the dataset by preprocessing it for training or validation.
 
         Args:
             data_path: Path to the data folder.
             score_csv_path: Path to the score csv file.
+            data_type: Type of data to use.
+            only_deg: Only use the degraded audio as input.
+            with_enhanced: Also load the enhanced audio.
+            size: Size of the dataset to use.
+
         """
         # Read score csv
         frame = pd.read_csv(
@@ -209,8 +192,7 @@ class NISQADataset:
     def _generate_wav(self, wav_path: Path) -> Float[Array, "time feature"]:
         """Generate a spectrogram from a wav file."""
         wav, _ = librosa.load(wav_path, sr=16000)
-        wav = jnp.abs(librosa.stft(wav, n_fft=512)).T
-        return wav
+        return jnp.abs(librosa.stft(wav, n_fft=512)).T
 
     def __getitem__(self, idx: Union[int, Int[Array, " batch"]]) -> AudioDatasetRef:
         """Get a sample or samples from the dataset.
@@ -224,7 +206,7 @@ class NISQADataset:
             score: The score of the sample.
             judge_id: The judge id of the sample.
         """
-        rows = self.scores.iloc[idx]
+        rows = self.scores.iloc[idx]  # type: ignore
         if isinstance(idx, int):
             deg, ref = [self.deg[idx]], [self.ref[idx]]
         else:
@@ -273,23 +255,5 @@ class NISQADataset:
         indices = random.permutation(key, len(self))[:batch_size]
         return self[indices]
 
-    def scan_all(self, batch_size: int, n_scans: int, *, key: PRNGKeyArray) -> Iterator[AudioDataset]:
-        """Get a random sample from the dataset.
 
-        Args:
-            batch_size: Size of the batch.
-            n_scans: Number of scans to do.
-            key: Key to use for shuffling.
-
-        Returns:
-            wav: The wave file as a numpy array.
-            mean: The mean score of the sample.
-            score: The score of the sample.
-            judge_id: The judge id of the sample.
-        """
-        # Permute the dataset and only take a number of samples that is divisible by the batches and scans
-        perm = random.permutation(key, len(self))[: len(self) - len(self) % (n_scans * batch_size)]
-        for p in jnp.split(perm, n_scans):
-            data = self[p]
-            scan_loops = len(data.mos) // batch_size
-            yield tree_map(lambda x: rearrange(x, "(s b) ... -> s b ...", s=scan_loops, b=batch_size), data)
+Dataset = Union[VCC18Dataset, NISQADataset]

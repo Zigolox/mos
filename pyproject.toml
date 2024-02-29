@@ -8,7 +8,7 @@ license = {file = "LICENSE"}
 authors = [
   {name = "Simon Sondén"},
 ]
-dependencies = ["jax>=0.4.14", "jaxlib>=0.4.14", "librosa>=0.10.1", "einops>=0.5.0","optax>=0.1.7", "tensorflow-probability>=0.21.0", "jaxtyping>=0.2.20", "equinox>=0.10.5", "typing_extensions>=4.5.0", "jax-tqdm>=0.1.1", "pandas>=2.1.4"]
+dependencies = ["jax>=0.4.14", "jaxlib>=0.4.14", "librosa>=0.10.1", "einops>=0.5.0","optax>=0.1.7", "tensorflow-probability>=0.21.0", "jaxtyping>=0.2.20", "equinox>=0.10.5", "typing_extensions>=4.5.0", "jax-tqdm>=0.1.1", "pandas>=2.1.4", "grain-nightly"]
 
 [build-system]
 requires = ["hatchling"]
@@ -21,24 +21,47 @@ include = ["mos/*"]
 addopts = "--jaxtyping-packages=mos,beartype.beartype(conf=beartype.BeartypeConf(strategy=beartype.BeartypeStrategy.On))"
 
 [tool.ruff]
-select = ["E", "F", "I", "W", "C90", "N", "D"]
+lint.select = [
+    "F",  # flake8 (pyflakes)
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "I",  # isort
+    "UP", # pyupgrade
+    "BLE",  # flake8-blind-except
+    "B",  # flake8-bugbear
+    "A",  # flake8-builtins
+    "INP",  # flake8-no-pep420
+    "PIE",  # flake8-pie
+    "Q",  # flake8-quotes
+    "RET",  # flake8-return
+    "SLF",  # flake8-self
+    "SIM",  # flake8-simplify
+    "TID",  # flask8-tidy-imports
+    "TCH",  # flake8-type-checking
+    "PTH",  # flake8-use-pathlib
+    "NPY",  # numpy-specific rules
+    "PERF",  # perflint
+    "FURB",  # refurb
+    "RUF",  # ruff-specific rules
+]
 extend-include = ["*.ipynb"]
 line-length = 115
-fixable = ["ALL"]
-ignore = [
+lint.fixable = ["ALL"]
+lint.ignore = [
           "E731", # Allow named lambdas
           "F722", # jax-typing
           "D104",  # Missing docstring in public package
           ]
-ignore-init-module-imports = true
+lint.ignore-init-module-imports = true
+preview = true
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 combine-as-imports = true
 lines-after-imports = 2
 extra-standard-library = ["typing_extensions"]
 order-by-type = false
 
-[tool.ruff.pydocstyle]
+[tool.ruff.lint.pydocstyle]
 convention = "google"
 
 [tool.pyright]
@@ -47,3 +70,4 @@ include = ["mos"]
 
 [tool.black]
 line-length = 115
+preview = true

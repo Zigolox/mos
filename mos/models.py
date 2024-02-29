@@ -1,4 +1,7 @@
 """All models used in the project."""
+
+from typing import Union
+
 import equinox as eqx
 from einops import rearrange
 from jax import lax, numpy as jnp
@@ -73,13 +76,11 @@ class BiLSTM(eqx.Module):
         """Forward pass of the BiLSTM."""
         del key
 
-        forward_states = self.forward_lstm(inputs)  # ´TODO: Check if vmap increases performance
+        forward_states = self.forward_lstm(inputs)  # TODO: Check if vmap increases performance
         backward_states = self.backward_lstm(inputs)
 
         # Combine two axes
-        combined = jnp.concatenate([forward_states, backward_states], axis=1)
-        # combined = rearrange([forward_states, backward_states], "l time hidden -> (l time) hidden")
-        return combined
+        return jnp.concatenate([forward_states, backward_states], axis=1)
 
 
 class DropNormActUnit(eqx.nn.Sequential):
@@ -96,13 +97,11 @@ class DeePMOSConvBlock(eqx.nn.Sequential):
     def __init__(self, in_channels: int, out_channels: int, *, key: PRNGKeyArray):
         """Initialize the convoluational block."""
         keys = split(key, 3)
-        super().__init__(
-            [
-                eqx.nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, key=keys[0]),
-                eqx.nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, key=keys[1]),
-                eqx.nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, stride=(1, 3), key=keys[2]),
-            ]
-        )
+        super().__init__([
+            eqx.nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, key=keys[0]),
+            eqx.nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, key=keys[1]),
+            eqx.nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, stride=(1, 3), key=keys[2]),
+        ])
 
 
 class ConvEncoder(eqx.nn.Sequential):
@@ -111,19 +110,17 @@ class ConvEncoder(eqx.nn.Sequential):
     def __init__(self, *, key: PRNGKeyArray):
         """Initialize the convolutional encoder."""
         keys = split(key, 4)
-        super().__init__(
-            [
-                eqx.nn.Lambda(lambda x: rearrange(x, "time feature -> 1 time feature")),
-                DeePMOSConvBlock(in_channels=1, out_channels=16, key=keys[0]),
-                DropNormActUnit(input_size=16),
-                DeePMOSConvBlock(in_channels=16, out_channels=32, key=keys[1]),
-                DropNormActUnit(input_size=32),
-                DeePMOSConvBlock(in_channels=32, out_channels=64, key=keys[2]),
-                DropNormActUnit(input_size=64),
-                DeePMOSConvBlock(in_channels=64, out_channels=128, key=keys[3]),
-                DropNormActUnit(input_size=128),
-            ]
-        )
+        super().__init__([
+            eqx.nn.Lambda(lambda x: rearrange(x, "time feature -> 1 time feature")),
+            DeePMOSConvBlock(in_channels=1, out_channels=16, key=keys[0]),
+            DropNormActUnit(input_size=16),
+            DeePMOSConvBlock(in_channels=16, out_channels=32, key=keys[1]),
+            DropNormActUnit(input_size=32),
+            DeePMOSConvBlock(in_channels=32, out_channels=64, key=keys[2]),
+            DropNormActUnit(input_size=64),
+            DeePMOSConvBlock(in_channels=64, out_channels=128, key=keys[3]),
+            DropNormActUnit(input_size=128),
+        ])
 
 
 class DeePMOSLSTMBlock(eqx.nn.Sequential):
@@ -131,12 +128,10 @@ class DeePMOSLSTMBlock(eqx.nn.Sequential):
 
     def __init__(self, input_size: int, hidden_size: int, *, key: PRNGKeyArray):
         """Initialize the LSTM block."""
-        super().__init__(
-            [
-                eqx.nn.Lambda(lambda x: rearrange(x, "c time w -> time (c w)")),
-                BiLSTM(input_size=input_size, hidden_size=hidden_size, key=key),
-            ]
-        )
+        super().__init__([
+            eqx.nn.Lambda(lambda x: rearrange(x, "c time w -> time (c w)")),
+            BiLSTM(input_size=input_size, hidden_size=hidden_size, key=key),
+        ])
 
 
 class DeePMOSEncoder(eqx.nn.Sequential):
@@ -145,12 +140,10 @@ class DeePMOSEncoder(eqx.nn.Sequential):
     def __init__(self, *, key: PRNGKeyArray):
         """Initialzize the encoder part."""
         conv_key, lstm_key = split(key, 2)
-        super().__init__(
-            [
-                ConvEncoder(key=conv_key),
-                DeePMOSLSTMBlock(input_size=512, hidden_size=128, key=lstm_key),
-            ]
-        )
+        super().__init__([
+            ConvEncoder(key=conv_key),
+            DeePMOSLSTMBlock(input_size=512, hidden_size=128, key=lstm_key),
+        ])
 
 
 class DeePMOSVarianceDecoder(eqx.nn.Sequential):
@@ -159,15 +152,13 @@ class DeePMOSVarianceDecoder(eqx.nn.Sequential):
     def __init__(self, *, key: PRNGKeyArray):
         """Initialize the variance decoder, it predict the positive variance."""
         keys = split(key, 2)
-        super().__init__(
-            [
-                eqx.nn.Linear(256, 128, key=keys[0]),
-                eqx.nn.Lambda(relu),
-                eqx.nn.Dropout(0.3),
-                eqx.nn.Linear(128, 1, key=keys[1]),
-                eqx.nn.Lambda(lambda x: elu(x) + 1),
-            ]
-        )
+        super().__init__([
+            eqx.nn.Linear(256, 128, key=keys[0]),
+            eqx.nn.Lambda(relu),
+            eqx.nn.Dropout(0.3),
+            eqx.nn.Linear(128, 1, key=keys[1]),
+            eqx.nn.Lambda(lambda x: elu(x) + 1),
+        ])
 
 
 class DeePMOSMeanDecoder(eqx.nn.Sequential):
@@ -176,14 +167,12 @@ class DeePMOSMeanDecoder(eqx.nn.Sequential):
     def __init__(self, *, key: PRNGKeyArray):
         """Initializes the mean."""
         keys = split(key, 2)
-        super().__init__(
-            [
-                eqx.nn.Linear(256, 128, key=keys[0]),
-                eqx.nn.Lambda(relu),
-                eqx.nn.Dropout(0.3),
-                eqx.nn.Linear(128, 1, key=keys[1]),
-            ]
-        )
+        super().__init__([
+            eqx.nn.Linear(256, 128, key=keys[0]),
+            eqx.nn.Lambda(relu),
+            eqx.nn.Dropout(0.3),
+            eqx.nn.Linear(128, 1, key=keys[1]),
+        ])
 
 
 class DeepMos(eqx.Module):
@@ -245,6 +234,7 @@ class MultiEncoderMos(eqx.Module):
         self.lstm = BiLSTM(input_size=1024, hidden_size=128, key=keys[2])
         self.mean_decoder = DeePMOSMeanDecoder(key=keys[3])
 
+    @eqx.filter_jit
     def __call__(
         self,
         inputs_ref: Float[Array, "time feature"],
@@ -277,3 +267,6 @@ class MultiEncoderMos(eqx.Module):
             hidden, split(mean_key, len(inputs_ref))
         )
         return mean, model_state
+
+
+Model = Union[DeepMos, MultiEncoderMos]

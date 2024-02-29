@@ -1,24 +1,23 @@
 """Module responsible for the training loop."""
 
 from functools import partial
-
-import equinox as eqx
-import log
-from dataset import AudioDataset, VCC18Dataset, NISQADataset
-from jax import lax
-from jax.random import split
-from jaxtyping import Array, Float, PRNGKeyArray
-from loss import batch_loss, multi_head_batch_loss
-from models import DeepMos, MultiEncoderMos
-from optax import GradientTransformation, OptState
-from tqdm import tqdm
 from typing import Callable
 
-import wandb
+import equinox as eqx
+import grain.python as grain
+from jax import lax
+from jax.random import split
+from jaxtyping import PRNGKeyArray
+from optax import GradientTransformation, OptState
+
+import mos.log as log
+from mos.dataset import AudioDataset
+from mos.models import Model
+from mos.utils import infinite_rng_split
 
 
 def step(
-    model: DeepMos,
+    model: Model,
     data: AudioDataset,
     opt_state: OptState,
     optim: GradientTransformation,
@@ -41,7 +40,9 @@ def step(
         Updated model, optimizer state, model state and loss.
     """
     # Compute the loss in regards to the model parameters.
-    (loss, model_state), grad = eqx.filter_value_and_grad(loss_fn, has_aux=True)(model, data, model_state, key)
+    (loss, (model_state, _)), grad = eqx.filter_value_and_grad(loss_fn, has_aux=True)(
+        model, data, model_state, key
+    )
     # Update the model parameters.
     updates, opt_state = optim.update(grad, opt_state, eqx.filter(model, eqx.is_array))
     model = eqx.apply_updates(model, updates)
@@ -50,35 +51,28 @@ def step(
 
 
 def train(
-    model: DeepMos,
+    model: Model,
     optim: GradientTransformation,
     opt_state: OptState,
-    epochs: int,
-    batch_size: int,
-    scan_size: int,
     model_state: eqx.nn.State,
-    train_dataset: VCC18Dataset,
-    validation_dataset: VCC18Dataset,
-    validation_size: int,
+    train_dataloader: grain.DataLoader,
+    validation_dataloader: grain.DataLoader,
     loss_fn: Callable,
     key: PRNGKeyArray,
-) -> tuple[DeepMos, eqx.nn.State]:
+    log_rate: int,
+) -> tuple[Model, eqx.nn.State]:
     """Train a model.
 
     Args:
         model: Model to train.
         optim: Optimizer to use.
         opt_state: State of the optimizer.
-        state: State of the model.
-        epochs: Number of epochs to train.
-        batch_size: Size of the batch.
-        scan_size: Size of the scan.
-        model_state: State of the batch norm.
-        train_dataset: Train dataset from dataset module
-        validation_dataset: Validation dataset from dataset module
-        validation_size: Size of the validation dataset
+        model_state: Batch norm state.
+        train_dataloader: DataLoader for the training dataset.
+        validation_dataloader: DataLoader for the validation dataset.
         loss_fn: Loss function to use.
         key: Random key
+        log_rate: Frequency at which to log the training process.
 
     Returns:
         Trained model, model state and losses.
@@ -87,102 +81,21 @@ def train(
 
     @partial(eqx.filter_jit, donate="all")
     def scan_step(carry, it):
-        (dynamic_model, opt_state, model_state), (data, key) = carry, it
+        (dynamic_model, opt_state, model_state), (data, step_key) = carry, it
         model, opt_state, model_state, loss = step(
-            eqx.combine(dynamic_model, static_model), data, opt_state, optim, model_state, loss_fn, key
+            eqx.combine(dynamic_model, static_model), data, opt_state, optim, model_state, loss_fn, step_key
         )
         return (eqx.filter(model, eqx.is_array), opt_state, model_state), loss
 
-    for epoch, epoch_key in enumerate(split(key, epochs)):
-        log.log_eval(
-            model,
-            validation_dataset.get_batch(validation_size, key=epoch_key),
-            model_state,
-            key,
-            loss_fn,
-            "val",
-        )
-        for data, key in zip(
-            train_dataset.scan_all(batch_size, scan_size, key=epoch_key), tqdm(split(epoch_key, scan_size))
-        ):
-            carry, it = (dynamic_model, opt_state, model_state), (data, split(key, len(data.mos)))
-            (dynamic_model, opt_state, model_state), loss = lax.scan(scan_step, carry, it)
-            log.log_multiple(loss, "train", "loss")
+    for pack_step, (data, step_key) in enumerate(zip(train_dataloader, infinite_rng_split(key))):
+        carry, it = (dynamic_model, opt_state, model_state), (data, split(step_key, len(data.mos)))
+        (dynamic_model, opt_state, model_state), loss = lax.scan(scan_step, carry, it)
 
-        model = eqx.combine(dynamic_model, static_model)
-        log.save_model(model, model_state, epoch)
+        log.log_multiple(loss, "train", "loss")
+
+        if pack_step % log_rate == 0:
+            model = eqx.combine(dynamic_model, static_model)
+            log.log_eval(model, model_state, validation_dataloader, step_key, loss_fn)
+            print(f"Step: {pack_step}, Loss: {loss.mean()}")
+            log.save_model(model, model_state, pack_step)
     return model, model_state
-
-
-if __name__ == "__main__":
-    import argparse
-    import pathlib
-
-    import jax
-    from optax import adamw
-
-    parser = argparse.ArgumentParser(description="Train a model.")
-    parser.add_argument("--epochs", type=int, default=1, help="Number of epochs to train the model for.")
-    parser.add_argument("--batch-size", type=int, default=32, help="Size of the batch to use for training.")
-    parser.add_argument("--scan-size", type=int, default=2, help="Size of the scan to use for training.")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate to use for training.")
-    parser.add_argument("--dataset-type", type=str, default="vcc2018", help="Dataset to use for training.")
-    parser.add_argument(
-        "--data-dir",
-        type=pathlib.Path,
-        default=pathlib.Path(__file__).parent.parent / "data" / "vcc2018",
-        help="Directory where the data is stored.",
-    )
-    parser.add_argument("--seed", type=int, default=0, help="Seed to use for the random number generator.")
-    parser.add_argument("--train_dataset", type=str, default="small_vcc2018_training_data.csv")
-    parser.add_argument("--validation_dataset", type=str, default="small_vcc2018_val_data.csv")
-    parser.add_argument("--validation_size", type=int, default=50)
-
-    args = parser.parse_args()
-
-    run = wandb.init(project="mos")
-    wandb.config.update(args)
-
-    # Set the seed
-    key = jax.random.key(args.seed)
-
-    # Load the dataset
-    if args.dataset_type == "vcc2018":
-        train_dataset = VCC18Dataset(args.data_dir, args.data_dir / args.train_dataset)
-        validation_dataset = VCC18Dataset(args.data_dir, args.data_dir / args.validation_dataset)
-        loss_fn = batch_loss
-        model_type = DeepMos
-    else:
-        train_dataset = NISQADataset(args.data_dir, args.data_dir / args.train_dataset, data_type="NISQA_VAL_SIM")
-        validation_dataset = NISQADataset(
-            args.data_dir, args.data_dir / args.train_dataset, data_type="NISQA_VAL_SIM"
-        )
-        loss_fn = multi_head_batch_loss
-        model_type = MultiEncoderMos
-    # Create the model
-    model, model_state = eqx.nn.make_with_state(model_type)(key=key)
-
-    # Create the optimizer
-    optim = adamw(learning_rate=args.lr)
-
-    # Initialize the optimizer
-    opt_state = optim.init(eqx.filter(model, eqx.is_array))
-
-    # Train the model
-    model, model_state = train(
-        model,
-        optim,
-        opt_state,
-        args.epochs,
-        args.batch_size,
-        args.scan_size,
-        model_state,
-        train_dataset,
-        validation_dataset,
-        args.validation_size,
-        loss_fn,
-        key,
-    )
-
-    inference_model = eqx.nn.inference_mode(model)
-    inference_model = eqx.Partial(inference_model, state=model_state)
