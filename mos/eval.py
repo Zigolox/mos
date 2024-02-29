@@ -54,3 +54,44 @@ def evaluate(
     # Put the model back in training mode.
     eqx.nn.inference_mode(model, False)
     return float(loss), float(spearmann), float(pearson)
+
+
+if __name__ == "__main__":
+    from pathlib import Path
+
+    import grain.python as grain
+    from jax import random
+
+    from mos.datasetv2 import AudioDataset, NISQADataset, PadTransform
+    from mos.loss import multi_head_batch_loss
+    from mos.models import Model, MultiEncoderMos
+
+    dataset = NISQADataset(
+        Path(__file__).parent.parent / "data" / "nisqa_test",
+        Path(__file__).parent.parent / "data" / "nisqa_test" / "NISQA_corpus_file.csv",
+        data_type="NISQA_VAL_SIM",
+        size=8,
+        only_ref=True,
+    )
+    read_options = grain.ReadOptions(num_threads=16, prefetch_buffer_size=100)
+    dataloader = grain.load(
+        dataset,
+        num_epochs=2,
+        transformations=[
+            PadTransform(1000),
+            grain.Batch(2, drop_remainder=True),
+            grain.Batch(2, drop_remainder=True),
+        ],
+        shuffle=True,
+        seed=0,
+        worker_count=1,
+        read_options=read_options,
+    )
+
+    loss_fn = multi_head_batch_loss
+    model_type = MultiEncoderMos
+    # Create the model
+    model, model_state = eqx.nn.make_with_state(model_type)(key=random.PRNGKey(0))
+    print("begin evaluation")
+    loss, spearmann, pearson = evaluate(model, model_state, dataloader, loss_fn, random.PRNGKey(0))
+    print(f"Loss: {loss:.4f}, Spearmann: {spearmann:.4f}, Pearson: {pearson:.4f}")

@@ -21,6 +21,9 @@ class NISQADataset(grain.RandomAccessDataSource):
         score_csv_path: Path,
         data_type="NISQA_TRAIN_SIM",
         size=-1,
+        only_deg=False,
+        only_ref=False,
+        noise_amplitude=0.0,
     ):
         """Prepares the dataset by preprocessing it for training or validation.
 
@@ -39,10 +42,16 @@ class NISQADataset(grain.RandomAccessDataSource):
         self.data_path = data_path
         if size > 0:
             self.scores = self.scores[:size]
+        self.filepath_ref = "filepath_deg" if only_deg else "filepath_ref"
+        self.filepath_deg = "filepath_ref" if only_ref else "filepath_deg"
+        self.noise_amplitude = noise_amplitude
+        self.rng = np.random.default_rng()
 
     def _generate_wav(self, wav_path: Path) -> np.ndarray:
         """Generate a spectrogram from a wav file."""
         wav, _ = librosa.load(wav_path, sr=16000)
+        print(max(wav), min(wav))
+        wav += self.rng.normal(0, self.noise_amplitude, wav.shape)
         return np.abs(librosa.stft(wav, n_fft=512)).T
 
     def _load_wav(self, row: pd.Series) -> tuple[np.ndarray, np.ndarray]:
@@ -55,8 +64,8 @@ class NISQADataset(grain.RandomAccessDataSource):
             ref: The reference wave file as a numpy array.
             deg: The degraded wave file as a numpy array.
         """
-        ref = self._generate_wav(self.data_path / row["filepath_ref"])
-        deg = self._generate_wav(self.data_path / row["filepath_deg"])
+        ref = self._generate_wav(self.data_path / row[self.filepath_ref])
+        deg = self._generate_wav(self.data_path / row[self.filepath_deg])
         return ref, deg
 
     def __getitem__(self, idx: Union[int, slice]) -> tuple[np.ndarray, np.ndarray, float]:
