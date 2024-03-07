@@ -50,7 +50,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    run = wandb.init(project="mos", config=vars(args), mode="enabled" if args.wandb else "disabled", dir=REPO_ROOT)
+    run = wandb.init(project="mos", config=vars(args), mode="online" if args.wandb else "disabled", dir=REPO_ROOT)
     wandb.config.update(args)
 
     # Set the seed
