@@ -94,7 +94,8 @@ def train(
 
         log.log_multiple(loss, "train", "loss")
 
-        if pack_step % log_rate == 0:
+        if pack_step % log_rate == log_rate - 1:
+            print("Starting evaluation")
             model = eqx.combine(dynamic_model, static_model)
             log.log_eval(model, model_state, validation_dataloader, step_key, loss_fn)
             print(f"Step: {pack_step}, Loss: {loss.mean()}")

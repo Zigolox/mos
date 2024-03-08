@@ -3,7 +3,6 @@
 import argparse
 import pathlib
 from functools import partial
-from pathlib import Path
 
 import equinox as eqx
 import grain.python as grain
@@ -11,13 +10,10 @@ import jax
 from optax import adamw
 
 import wandb
-from mos.datasetv2 import NISQADataset, PadTransform
+from mos.datasetv2 import NISQADataset, PadTransform, REPO_ROOT
 from mos.loss import multi_head_batch_loss
 from mos.models import MultiEncoderMos
 from mos.train import train
-
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def parse_args():
@@ -31,7 +27,7 @@ def parse_args():
     parser.add_argument(
         "--data-dir",
         type=pathlib.Path,
-        default=pathlib.Path(__file__).parent.parent / "data" / "nisqa",
+        default=REPO_ROOT / "data" / "nisqa",
         help="Directory where the data is stored.",
     )
     parser.add_argument("--seed", type=int, default=0, help="Seed to use for the random number generator.")

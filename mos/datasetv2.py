@@ -12,6 +12,9 @@ import pandas as pd
 from mos.audiodataset import AudioDataset
 
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
 class NISQADataset(grain.RandomAccessDataSource):
     """Loader and server of the NISQA dataset."""
 

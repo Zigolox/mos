@@ -8,7 +8,11 @@ from eval import evaluate
 from jaxtyping import Array, PRNGKeyArray
 
 import wandb
+from mos.datasetv2 import REPO_ROOT
 from mos.models import Model
+
+
+MODEL_SAVE_PATH = REPO_ROOT / "models"
 
 
 def log_eval(
@@ -44,6 +48,9 @@ def save_model(model, model_state, epoch):
     """Saves the model to wandb."""
     model_file_name = f"models/{model.__class__.__name__}_gstep{epoch}.eqx"
     state_file_name = f"models/{model.__class__.__name__}_state_gstep{epoch}.eqx"
+
+    # Create directory if it does not exist
+    MODEL_SAVE_PATH.mkdir(parents=True, exist_ok=True)
 
     eqx.tree_serialise_leaves(model_file_name, model)
     eqx.tree_serialise_leaves(state_file_name, model_state)
