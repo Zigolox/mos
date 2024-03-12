@@ -23,7 +23,6 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=1, help="Size of the batch to use for training.")
     parser.add_argument("--scan-size", type=int, default=1, help="Size of the scan to use for training.")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate to use for training.")
-    parser.add_argument("--dataset-type", type=str, default="vcc2018", help="Dataset to use for training.")
     parser.add_argument(
         "--data-dir",
         type=pathlib.Path,
@@ -33,12 +32,13 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=0, help="Seed to use for the random number generator.")
     parser.add_argument("--train_dataset", type=str, default="NISQA_corpus_file.csv")
     parser.add_argument("--validation_dataset", type=str, default="NISQA_corpus_file.csv")
-    parser.add_argument("--validation_size", type=int, default=50)
     parser.add_argument("--only_deg", type=bool, default=False, help="Only use the degraded audio as input.")
     parser.add_argument("--wandb", type=bool, default=False, help="Use wandb for logging.")
     parser.add_argument("--workers", type=int, default=4, help="Number of workers to use for data loading.")
     parser.add_argument("--drop_remainder", type=bool, default=True, help="Drop remainder of the batch.")
     parser.add_argument("--log_rate", type=int, default=100, help="Rate at which to log the loss.")
+    parser.add_argument("--only_deg", type=bool, default=False, help="Only use the degraded audio as input.")
+    parser.add_argument("--only_ref", type=bool, default=False, help="Only use the reference audio as input.")
 
     return parser.parse_args()
 
@@ -57,11 +57,15 @@ if __name__ == "__main__":
         args.data_dir,
         args.data_dir / args.train_dataset,
         data_type="NISQA_TRAIN_SIM",
+        only_deg=args.only_deg,
+        only_ref=args.only_ref,
     )
     validation_dataset = NISQADataset(
         args.data_dir,
         args.data_dir / args.validation_dataset,
         data_type="NISQA_VAL_SIM",
+        only_deg=args.only_deg,
+        only_ref=args.only_ref,
     )
     dataloader = partial(
         grain.load,
