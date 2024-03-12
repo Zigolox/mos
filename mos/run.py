@@ -38,6 +38,10 @@ def parse_args():
     parser.add_argument("--log_rate", type=int, default=100, help="Rate at which to log the loss.")
     parser.add_argument("--only_deg", type=bool, default=False, help="Only use the degraded audio as input.")
     parser.add_argument("--only_ref", type=bool, default=False, help="Only use the reference audio as input.")
+    parser.add_argument(
+        "--noise_amplitude", type=float, default=0.0, help="Amplitude of the noise to add to the reference audio."
+    )
+    parser.add_argument("--pad_size", type=int, default=1501, help="Size to pad the data to.")
 
     return parser.parse_args()
 
@@ -58,6 +62,7 @@ if __name__ == "__main__":
         data_type="NISQA_TRAIN_SIM",
         only_deg=args.only_deg,
         only_ref=args.only_ref,
+        noise_amplitude=args.noise_amplitude,
     )
     validation_dataset = NISQADataset(
         args.data_dir,
@@ -65,11 +70,12 @@ if __name__ == "__main__":
         data_type="NISQA_VAL_SIM",
         only_deg=args.only_deg,
         only_ref=args.only_ref,
+        noise_amplitude=args.noise_amplitude,
     )
     dataloader = partial(
         grain.load,
         transformations=(
-            PadTransform(1000),
+            PadTransform(args.pad_size),
             grain.Batch(args.batch_size, drop_remainder=args.drop_remainder),
             grain.Batch(args.scan_size, drop_remainder=args.drop_remainder),
         ),

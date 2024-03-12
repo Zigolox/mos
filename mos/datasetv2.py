@@ -50,10 +50,11 @@ class NISQADataset(grain.RandomAccessDataSource):
         self.noise_amplitude = noise_amplitude
         self.rng = np.random.default_rng()
 
-    def _generate_wav(self, wav_path: Path) -> np.ndarray:
+    def _generate_wav(self, wav_path: Path, file_type: str) -> np.ndarray:
         """Generate a spectrogram from a wav file."""
         wav, _ = librosa.load(wav_path, sr=16000)
-        wav += self.rng.normal(0, self.noise_amplitude, wav.shape)
+        if file_type == "ref":
+            wav += np.random.default_rng(abs(hash(wav_path))).normal(0, self.noise_amplitude, wav.shape)
         return np.abs(librosa.stft(wav, n_fft=512)).T
 
     def _load_wav(self, row: pd.Series) -> tuple[np.ndarray, np.ndarray]:
@@ -66,8 +67,8 @@ class NISQADataset(grain.RandomAccessDataSource):
             ref: The reference wave file as a numpy array.
             deg: The degraded wave file as a numpy array.
         """
-        ref = self._generate_wav(self.data_path / row[self.filepath_ref])
-        deg = self._generate_wav(self.data_path / row[self.filepath_deg])
+        ref = self._generate_wav(self.data_path / row[self.filepath_ref], "ref")
+        deg = self._generate_wav(self.data_path / row[self.filepath_deg], "deg")
         return ref, deg
 
     def __getitem__(self, idx: Union[int, slice]) -> tuple[np.ndarray, np.ndarray, float]:
@@ -119,10 +120,11 @@ if __name__ == "__main__":
     import time
 
     dataset = NISQADataset(
-        Path(__file__).parent.parent / "data" / "nisqa_test",
-        Path(__file__).parent.parent / "data" / "nisqa_test" / "NISQA_corpus_file.csv",
+        REPO_ROOT / "data" / "nisqa",
+        REPO_ROOT / "data" / "nisqa" / "NISQA_corpus_file.csv",
         data_type="NISQA_VAL_SIM",
         size=100,
+        noise_amplitude=0.0,
     )
     read_options = grain.ReadOptions(num_threads=16, prefetch_buffer_size=100)
     a = grain.load(
@@ -130,9 +132,6 @@ if __name__ == "__main__":
         num_epochs=2,
         transformations=[
             PadTransform(1000),
-            grain.Batch(5, drop_remainder=True),
-            grain.Batch(5, drop_remainder=True),
-            AudioDatasetTransform(),
         ],
         shuffle=True,
         seed=0,
