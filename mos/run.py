@@ -32,7 +32,6 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=0, help="Seed to use for the random number generator.")
     parser.add_argument("--train_dataset", type=str, default="NISQA_corpus_file.csv")
     parser.add_argument("--validation_dataset", type=str, default="NISQA_corpus_file.csv")
-    parser.add_argument("--only_deg", type=bool, default=False, help="Only use the degraded audio as input.")
     parser.add_argument("--wandb", type=bool, default=False, help="Use wandb for logging.")
     parser.add_argument("--workers", type=int, default=4, help="Number of workers to use for data loading.")
     parser.add_argument("--drop_remainder", type=bool, default=True, help="Drop remainder of the batch.")
